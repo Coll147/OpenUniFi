@@ -1,4 +1,7 @@
 # openuf — OpenWrt SDK package Makefile
+#
+# Compilar con debug:
+#   make package/openuf/compile DEBUG=1
 include $(TOPDIR)/rules.mk
 
 PKG_NAME    := openuf
@@ -19,9 +22,7 @@ endef
 
 define Package/openuf/description
   Emulates a UniFi U6 IW access point, allowing OpenWrt to be managed
-  by a UniFi Network controller. Supports adoption, WiFi config push
-  (band steering, fast roaming, WPA3, PMF), client reporting, CPU/RAM
-  stats, and LLDP topology.
+  by a UniFi Network controller.
 endef
 
 define Build/Prepare
@@ -31,6 +32,11 @@ endef
 
 TARGET_CFLAGS  += -I$(STAGING_DIR)/usr/include
 TARGET_LDFLAGS += -lmbedtls -lmbedcrypto -luci -ljson-c
+
+# Soporte DEBUG=1 desde la linea de comandos del SDK
+ifeq ($(DEBUG),1)
+  TARGET_CFLAGS += -DOPENUF_DEBUG -g -O0
+endif
 
 define Build/Compile
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \

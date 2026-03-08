@@ -21,6 +21,7 @@
  */
 
 #include "ufmodel.h"
+#include "debug.h"
 #include <string.h>
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -178,22 +179,25 @@ static const uf_model_t *all_models[] = {
 
 const uf_model_t *ufmodel_find(const char *name)
 {
-    if (!name) return &model_u6inwall;
+    if (!name) { DLOG("models: ufmodel_find(NULL) -> u6inwall por defecto"); return &model_u6inwall; }
+    DLOG("models: buscando modelo '%s'", name);
     for (int i = 0; all_models[i]; i++) {
         const uf_model_t *m = all_models[i];
         if (!strcasecmp(name, m->model)        ||
             !strcasecmp(name, m->model_display) ||
             !strcasecmp(name, m->display_name)  ||
-            !strcasecmp(name, m->platform))
+            !strcasecmp(name, m->platform)) {
+            DLOG("models: encontrado '%s' -> %s (%s)", name, m->model, m->display_name);
             return m;
+        }
     }
-    /* Aliases de configuración */
-    if (!strcasecmp(name, "u6-inwall") ||
-        !strcasecmp(name, "u6iw"))     return &model_u6inwall;
-    if (!strcasecmp(name, "u6-lite"))  return &model_u6lite;
-    if (!strcasecmp(name, "uapg1"))    return &model_uapg1;
-    if (!strcasecmp(name, "uapg1-lr")) return &model_uapg1lr;
-    if (!strcasecmp(name, "uapg2-ac-lr")) return &model_uapg2aclr;
+    /* Aliases */
+    if (!strcasecmp(name,"u6-inwall")||!strcasecmp(name,"u6iw"))  { DLOG("models: alias u6iw");        return &model_u6inwall; }
+    if (!strcasecmp(name,"u6-lite"))                               { DLOG("models: alias u6-lite");     return &model_u6lite;   }
+    if (!strcasecmp(name,"uapg1"))                                 { DLOG("models: alias uapg1");       return &model_uapg1;    }
+    if (!strcasecmp(name,"uapg1-lr"))                              { DLOG("models: alias uapg1-lr");    return &model_uapg1lr;  }
+    if (!strcasecmp(name,"uapg2-ac-lr"))                           { DLOG("models: alias uapg2-ac-lr"); return &model_uapg2aclr;}
 
-    return &model_u6inwall;  /* default */
+    DLOG("models: modelo '%s' no encontrado -- usando u6inwall por defecto", name);
+    return &model_u6inwall;
 }

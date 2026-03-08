@@ -2,16 +2,29 @@
 #
 # Requisitos:
 #   opkg install gcc make \
-#                libmbedtls-dev libuci-dev libjson-c-dev \
-#                lldpd              (opcional, para leer vecinos LLDP)
+#                libmbedtls-dev libuci-dev libjson-c-dev
 #
-# Uso:
+# Uso normal (sin logs debug):
 #   make -f Makefile.standalone
+#
+# Con logs debug activados:
+#   make -f Makefile.standalone DEBUG=1
+#
+# Instalar:
 #   make -f Makefile.standalone install
+#   make -f Makefile.standalone DEBUG=1 install
 
 CC      = gcc
 CFLAGS  = -Wall -Wextra -O2 -I/usr/include
 LDFLAGS = -lmbedtls -lmbedcrypto -luci -ljson-c
+
+# Si se llama con DEBUG=1, activar logs de depuracion
+ifeq ($(DEBUG),1)
+    CFLAGS  += -DOPENUF_DEBUG -g -O0
+    $(info [openuf] DEBUG activado — los logs aparecen en stderr)
+else
+    $(info [openuf] Compilando sin debug (make DEBUG=1 para activar logs))
+endif
 
 SRCS = src/main.c \
        src/config.c \
