@@ -12,6 +12,7 @@ void config_load(openuf_config_t *cfg)
     cfg->inform_interval = DEFAULT_INFORM_INTERVAL;
     cfg->enable_announce = 1;
     cfg->enable_inform   = 1;
+    cfg->enable_logging  = 0;
 
     FILE *f = fopen(OPENUF_CONF_FILE, "r");
     if (!f) return;
@@ -32,6 +33,7 @@ void config_load(openuf_config_t *cfg)
         else if (!strcmp(key, "inform_interval"))  cfg->inform_interval = atoi(val);
         else if (!strcmp(key, "enable_announce"))  cfg->enable_announce = atoi(val);
         else if (!strcmp(key, "enable_inform"))    cfg->enable_inform   = atoi(val);
+        else if (!strcmp(key, "enable_logging"))   cfg->enable_logging = atoi(val);
     }
     fclose(f);
 }

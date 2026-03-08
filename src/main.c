@@ -25,6 +25,10 @@
 #include "inform.h"
 #include "lldp.h"
 
+#ifdef ENABLE_LOGGING
+FILE *log_fp = NULL;
+#endif
+
 #define LLDP_INTERVAL  30   /* segundos entre frames LLDP */
 #define LLDP_TTL      120   /* validez del registro LLDP en segundos */
 
@@ -69,6 +73,15 @@ int main(int argc, char *argv[])
     openuf_config_t cfg;
     config_load(&cfg);
 
+#ifdef ENABLE_LOGGING
+    if (cfg.enable_logging) {
+        log_fp = fopen("/var/log/openuf.log", "a");
+        if (log_fp) {
+            LOG("Logging enabled");
+        }
+    }
+#endif
+
     const uf_model_t *model = ufmodel_find(cfg.ufmodel);
 
     char mac_str[32] = "00:00:00:00:00:00";
@@ -99,11 +112,13 @@ int main(int argc, char *argv[])
            lldp_available() ? "sí (lldpd)" : "no (solo envío propio)");
     fflush(stdout);
 
+    LOG("Daemon started");
+
     /* ── Announce socket ────────────────────────────────────────── */
     announce_ctx_t ann;
     if (cfg.enable_announce) {
         if (announce_init(&ann, model, mac_str, ip_str) != 0) {
-            fprintf(stderr, "[openuf] Fallo al iniciar announce\n");
+            LOG("Fallo al iniciar announce");
             cfg.enable_announce = 0;
         }
     }
@@ -129,12 +144,14 @@ int main(int argc, char *argv[])
         /* Announce L2/UDP */
         if (cfg.enable_announce &&
             (now - last_announce) >= ANNOUNCE_INTERVAL) {
+            LOG("Sending announce");
             announce_send(&ann);
             last_announce = now;
         }
 
         /* LLDP frames por cada interfaz ethernet */
         if ((now - last_lldp) >= LLDP_INTERVAL) {
+            LOG("Sending LLDP frames");
             for (int i = 0; i < model->port_table_len; i++) {
                 const char *iface = model->port_table[i].ifname;
                 /* Leer MAC real de la interfaz si disponible */
@@ -151,6 +168,7 @@ int main(int argc, char *argv[])
         if (cfg.enable_inform &&
             (now - last_inform) >= cfg.inform_interval) {
             last_inform = now;
+            LOG("Sending inform");
 
             /* Actualizar IP en cada ciclo */
             char new_ip[64] = {0};
@@ -161,8 +179,7 @@ int main(int argc, char *argv[])
             long uptime = (long)(now - start_time);
             char err[128] = {0};
             if (inform_send(&state, model, uptime, err) != 0) {
-                fprintf(stderr, "[openuf] inform error: %s\n", err);
-                fflush(stderr);
+                LOG("inform error: %s", err);
             }
         }
 
@@ -170,5 +187,13 @@ int main(int argc, char *argv[])
     }
 
     announce_close(&ann);
+
+#ifdef ENABLE_LOGGING
+    if (log_fp) {
+        LOG("Shutting down");
+        fclose(log_fp);
+    }
+#endif
+
     return 0;
 }

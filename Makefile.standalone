@@ -13,6 +13,10 @@ CC      = gcc
 CFLAGS  = -Wall -Wextra -O2 -I/usr/include
 LDFLAGS = -lmbedtls -lmbedcrypto -luci -ljson-c
 
+ifdef ENABLE_LOGGING
+CFLAGS += -DENABLE_LOGGING
+endif
+
 SRCS = src/main.c \
        src/config.c \
        src/state.c \

@@ -32,6 +32,10 @@ endef
 TARGET_CFLAGS  += -I$(STAGING_DIR)/usr/include
 TARGET_LDFLAGS += -lmbedtls -lmbedcrypto -luci -ljson-c
 
+ifdef ENABLE_LOGGING
+TARGET_CFLAGS += -DENABLE_LOGGING
+endif
+
 define Build/Compile
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \
 		-o $(PKG_BUILD_DIR)/openuf \
