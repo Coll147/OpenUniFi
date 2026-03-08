@@ -1,149 +1,87 @@
-/*
- * openuf - crypto.c
- * AES-128-CBC via mbedTLS + utilidades hex/random.
- */
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <stdlib.h>
 #include <mbedtls/aes.h>
-#include <mbedtls/pkcs5.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
 #include "crypto.h"
 #include "debug.h"
 
-/* ─── Hex helpers ────────────────────────────────────────────────── */
-void crypto_hex2bin(const char *hex, unsigned char *bin, int bin_len)
-{
-    DLOG("crypto: hex2bin len=%d hex=%.16s...", bin_len, hex);
-    for (int i = 0; i < bin_len; i++) {
-        unsigned int v = 0;
-        sscanf(hex + i*2, "%02x", &v);
-        bin[i] = (unsigned char)v;
-    }
+#define DBG_TAG "crypto"
+
+void crypto_hex2bin(const char *hex, unsigned char *bin, size_t len) {
+    for (size_t i = 0; i < len; i++) { unsigned int b=0; sscanf(hex+i*2,"%02x",&b); bin[i]=(unsigned char)b; }
+}
+void crypto_bin2hex(const unsigned char *bin, size_t len, char *out) {
+    for (size_t i = 0; i < len; i++) sprintf(out+i*2,"%02x",bin[i]); out[len*2]='\0';
 }
 
-void crypto_bin2hex(const unsigned char *bin, int bin_len, char *hex_out)
-{
-    for (int i = 0; i < bin_len; i++)
-        sprintf(hex_out + i*2, "%02x", bin[i]);
-    hex_out[bin_len*2] = '\0';
-    DLOG("crypto: bin2hex len=%d → %s", bin_len, hex_out);
+int crypto_random_hex(unsigned char *hex_out, int nbytes) {
+    LOG_TRACE("generando IV: %d bytes via mbedTLS CTR_DRBG...", nbytes);
+    if (nbytes > 64) { LOG_ERR("nbytes=%d > 64", nbytes); return -1; }
+    mbedtls_entropy_context  entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    unsigned char buf[64];
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+    int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                                    (const unsigned char*)"openuf", 6);
+    if (ret != 0) { LOG_ERR("ctr_drbg_seed: -0x%04x", (unsigned)-ret); goto out; }
+    ret = mbedtls_ctr_drbg_random(&ctr_drbg, buf, nbytes);
+    if (ret != 0) { LOG_ERR("ctr_drbg_random: -0x%04x", (unsigned)-ret); goto out; }
+    crypto_bin2hex(buf, nbytes, (char*)hex_out);
+    LOG_TRACE("IV = %.*s", nbytes*2, (char*)hex_out);
+    ret = 0;
+out:
+    mbedtls_ctr_drbg_free(&ctr_drbg); mbedtls_entropy_free(&entropy);
+    return ret;
 }
 
-int crypto_random_hex(unsigned char *hex_out, int byte_count)
-{
-    /* Semilla simple (suficiente para IV — no se necesita CSPRNG) */
-    static int seeded = 0;
-    if (!seeded) { srand((unsigned)time(NULL)); seeded = 1; }
-
-    for (int i = 0; i < byte_count; i++)
-        sprintf((char*)hex_out + i*2, "%02x", rand() & 0xff);
-    hex_out[byte_count*2] = '\0';
-    DLOG("crypto: random IV generado: %s", hex_out);
-    return 0;
-}
-
-/* ─── PKCS#7 padding helpers ─────────────────────────────────────── */
-static int pkcs7_pad(unsigned char *buf, int data_len, int block_sz)
-{
-    int pad = block_sz - (data_len % block_sz);
-    DLOG("crypto: PKCS7 pad — data_len=%d pad=%d total=%d", data_len, pad, data_len+pad);
-    for (int i = 0; i < pad; i++) buf[data_len + i] = (unsigned char)pad;
-    return data_len + pad;
-}
-
-static int pkcs7_unpad(unsigned char *buf, int data_len)
-{
-    if (data_len <= 0) return 0;
-    int pad = buf[data_len - 1];
-    if (pad < 1 || pad > 16) {
-        DLOG("crypto: PKCS7 unpad INVALIDO — ultimo byte=%d", pad);
-        return data_len;
-    }
-    DLOG("crypto: PKCS7 unpad — pad=%d plaintext_len=%d", pad, data_len - pad);
-    return data_len - pad;
-}
-
-/* ─── AES-128-CBC cifrado ────────────────────────────────────────── */
 int crypto_encrypt(const char *key_hex, const char *iv_hex,
-                   const unsigned char *plain, int plain_len,
-                   unsigned char *cipher_out)
-{
-    DLOG("crypto: encrypt — plain_len=%d key=%.8s... iv=%.8s...",
-         plain_len, key_hex, iv_hex);
-
+                   const unsigned char *in, size_t in_len, unsigned char *out) {
+    LOG_TRACE("AES-128-CBC cifrado: %zu bytes  clave=%.8s...  IV=%.8s...",
+              in_len, key_hex, iv_hex);
     unsigned char key[16], iv[16];
-    crypto_hex2bin(key_hex, key, 16);
-    crypto_hex2bin(iv_hex,  iv,  16);
-
-    /* Copiar y padeamos en buffer temporal */
-    unsigned char *buf = malloc(plain_len + 32);
-    if (!buf) { DLOG("crypto: encrypt OOM"); return -1; }
-    memcpy(buf, plain, plain_len);
-    int padded_len = pkcs7_pad(buf, plain_len, 16);
-
-    DLOG("crypto: mbedtls AES-128-CBC encrypt — padded_len=%d", padded_len);
-
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    if (mbedtls_aes_setkey_enc(&ctx, key, 128) != 0) {
-        DLOG("crypto: mbedtls_aes_setkey_enc FALLO");
-        mbedtls_aes_free(&ctx); free(buf); return -1;
+    crypto_hex2bin(key_hex,key,16); crypto_hex2bin(iv_hex,iv,16);
+    size_t pad=16-(in_len%16), padded=in_len+pad;
+    LOG_TRACE("  PKCS#7: entrada=%zu relleno=%zu salida=%zu", in_len, pad, padded);
+    unsigned char *tmp = malloc(padded);
+    if (!tmp) { LOG_ERR("OOM malloc(%zu)", padded); return -1; }
+    memcpy(tmp,in,in_len); memset(tmp+in_len,(unsigned char)pad,pad);
+    mbedtls_aes_context ctx; mbedtls_aes_init(&ctx);
+    if (mbedtls_aes_setkey_enc(&ctx,key,128)!=0) {
+        LOG_ERR("aes_setkey_enc falló"); mbedtls_aes_free(&ctx); free(tmp); return -1;
     }
-
-    unsigned char iv_copy[16];
-    memcpy(iv_copy, iv, 16);
-    int rc = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT,
-                                   padded_len, iv_copy, buf, cipher_out);
-    mbedtls_aes_free(&ctx);
-    free(buf);
-
-    if (rc != 0) {
-        DLOG("crypto: mbedtls_aes_crypt_cbc FALLO rc=%d", rc);
-        return -1;
-    }
-    DLOG("crypto: encrypt OK → cipher_len=%d", padded_len);
-    DLOG_HEX("cipher (primeros bytes)", cipher_out, padded_len < 32 ? padded_len : 32);
-    return padded_len;
+    unsigned char iv_copy[16]; memcpy(iv_copy,iv,16);
+    int ret = mbedtls_aes_crypt_cbc(&ctx,MBEDTLS_AES_ENCRYPT,padded,iv_copy,tmp,out);
+    mbedtls_aes_free(&ctx); free(tmp);
+    if (ret!=0) { LOG_ERR("aes_crypt_cbc(enc): -0x%04x", (unsigned)-ret); return -1; }
+    LOG_DBG("cifrado OK: %zu → %zu bytes (pad=%zu)", in_len, padded, pad);
+    DBG_HEX("primeros 32 bytes cifrados", out, padded<32?padded:32);
+    return (int)padded;
 }
 
-/* ─── AES-128-CBC descifrado ─────────────────────────────────────── */
 int crypto_decrypt(const char *key_hex, const char *iv_hex,
-                   const unsigned char *cipher, int cipher_len,
-                   unsigned char *plain_out)
-{
-    DLOG("crypto: decrypt — cipher_len=%d key=%.8s... iv=%.8s...",
-         cipher_len, key_hex, iv_hex);
-
-    if (cipher_len % 16 != 0) {
-        DLOG("crypto: cipher_len=%d no es multiplo de 16 — ERROR", cipher_len);
+                   const unsigned char *in, size_t in_len, unsigned char *out) {
+    LOG_TRACE("AES-128-CBC descifrado: %zu bytes  IV=%.8s...", in_len, iv_hex);
+    if (in_len==0||in_len%16!=0) {
+        LOG_ERR("longitud inválida: %zu (debe ser múltiplo de 16)", in_len);
         return -1;
     }
-
     unsigned char key[16], iv[16];
-    crypto_hex2bin(key_hex, key, 16);
-    crypto_hex2bin(iv_hex,  iv,  16);
-
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    if (mbedtls_aes_setkey_dec(&ctx, key, 128) != 0) {
-        DLOG("crypto: mbedtls_aes_setkey_dec FALLO");
-        mbedtls_aes_free(&ctx); return -1;
+    crypto_hex2bin(key_hex,key,16); crypto_hex2bin(iv_hex,iv,16);
+    unsigned char iv_copy[16]; memcpy(iv_copy,iv,16);
+    mbedtls_aes_context ctx; mbedtls_aes_init(&ctx);
+    if (mbedtls_aes_setkey_dec(&ctx,key,128)!=0) {
+        LOG_ERR("aes_setkey_dec falló"); mbedtls_aes_free(&ctx); return -1;
     }
-
-    unsigned char iv_copy[16];
-    memcpy(iv_copy, iv, 16);
-    int rc = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT,
-                                   cipher_len, iv_copy, cipher, plain_out);
+    int ret = mbedtls_aes_crypt_cbc(&ctx,MBEDTLS_AES_DECRYPT,in_len,iv_copy,in,out);
     mbedtls_aes_free(&ctx);
-
-    if (rc != 0) {
-        DLOG("crypto: mbedtls_aes_crypt_cbc FALLO rc=%d", rc);
-        return -1;
-    }
-
-    int plain_len = pkcs7_unpad(plain_out, cipher_len);
-    plain_out[plain_len] = '\0';
-    DLOG("crypto: decrypt OK — plain_len=%d", plain_len);
-    return plain_len;
+    if (ret!=0) { LOG_ERR("aes_crypt_cbc(dec): -0x%04x", (unsigned)-ret); return -1; }
+    unsigned char pad = out[in_len-1];
+    if (pad==0||pad>16) { LOG_ERR("PKCS#7 inválido: 0x%02x (clave incorrecta?)",pad); return -1; }
+    int plain = (int)(in_len-pad);
+    LOG_DBG("descifrado OK: %zu → %d bytes (pad=%u)", in_len, plain, pad);
+    LOG_TRACE("JSON inicio: %.*s", plain<100?plain:100, out);
+    return plain;
 }

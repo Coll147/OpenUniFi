@@ -1,7 +1,9 @@
 # openuf — OpenWrt SDK package Makefile
 #
-# Compilar con debug:
-#   make package/openuf/compile DEBUG=1
+# Niveles de log (compilar sin flag = nivel 3 INFO, producción):
+#   make package/openuf/compile DEBUG=1          → nivel 4 DEBUG
+#   make package/openuf/compile TRACE=1          → nivel 5 TRACE (máximo)
+#   make package/openuf/compile LOG_LEVEL=2      → nivel personalizado
 include $(TOPDIR)/rules.mk
 
 PKG_NAME    := openuf
@@ -33,8 +35,21 @@ endef
 TARGET_CFLAGS  += -I$(STAGING_DIR)/usr/include
 TARGET_LDFLAGS += -lmbedtls -lmbedcrypto -luci -ljson-c
 
-# Soporte DEBUG=1 desde la linea de comandos del SDK
-ifeq ($(DEBUG),1)
+# ─── Nivel de log en tiempo de compilación ───────────────────────
+# Por defecto: nivel 3 (INFO) — sin overhead en producción.
+# Los niveles superiores añaden -g -O0 para facilitar debugging.
+ifdef LOG_LEVEL
+  TARGET_CFLAGS += -DOPENUF_LOG_LEVEL=$(LOG_LEVEL)
+  ifneq ($(LOG_LEVEL),1)
+  ifneq ($(LOG_LEVEL),2)
+  ifneq ($(LOG_LEVEL),3)
+    TARGET_CFLAGS += -g -O0
+  endif
+  endif
+  endif
+else ifeq ($(TRACE),1)
+  TARGET_CFLAGS += -DOPENUF_TRACE -DOPENUF_DEBUG -g -O0
+else ifeq ($(DEBUG),1)
   TARGET_CFLAGS += -DOPENUF_DEBUG -g -O0
 endif
 
