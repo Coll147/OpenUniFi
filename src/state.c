@@ -5,6 +5,14 @@
 #include "state.h"
 #include "config.h"
 
+#ifdef ENABLE_LOGGING
+#include <stdio.h>
+extern FILE *log_fp;
+#define LOG(fmt, ...) do { if (log_fp) { fprintf(log_fp, "[%s] " fmt "\n", __func__, ##__VA_ARGS__); fflush(log_fp); } } while(0)
+#else
+#define LOG(fmt, ...) do {} while(0)
+#endif
+
 static void state_defaults(openuf_state_t *st)
 {
     memset(st, 0, sizeof(*st));
@@ -18,7 +26,10 @@ void state_load(openuf_state_t *st)
     state_defaults(st);
 
     FILE *f = fopen(OPENUF_STATE_FILE, "r");
-    if (!f) return;
+    if (!f) {
+        LOG("State file not found, using defaults");
+        return;
+    }
 
     /* Read whole file */
     fseek(f, 0, SEEK_END);
@@ -34,7 +45,10 @@ void state_load(openuf_state_t *st)
 
     struct json_object *root = json_tokener_parse(buf);
     free(buf);
-    if (!root) return;
+    if (!root) {
+        LOG("Failed to parse state file");
+        return;
+    }
 
     struct json_object *v;
 #define LOAD_STR(field, key) \
@@ -52,6 +66,9 @@ void state_load(openuf_state_t *st)
     LOAD_STR (ip,         "ip");
     LOAD_STR (hostname,   "hostname");
 
+    LOG("State loaded: adopted=%d, authkey=%.8s..., inform_url=%s", 
+        st->adopted, st->authkey[0] ? st->authkey : "DEFAULT", st->inform_url);
+
     json_object_put(root);
 }
 
@@ -59,6 +76,9 @@ int state_save(const openuf_state_t *st)
 {
     /* Ensure directory exists */
     mkdir("/etc/openuf", 0755);
+
+    LOG("Saving state: adopted=%d, authkey=%.8s..., inform_url=%s", 
+        st->adopted, st->authkey[0] ? st->authkey : "DEFAULT", st->inform_url);
 
     struct json_object *root = json_object_new_object();
     json_object_object_add(root, "adopted",    json_object_new_boolean(st->adopted));
@@ -72,9 +92,14 @@ int state_save(const openuf_state_t *st)
     const char *s = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
 
     FILE *f = fopen(OPENUF_STATE_FILE, "w");
-    if (!f) { json_object_put(root); return -1; }
+    if (!f) { 
+        LOG("Failed to open state file for writing");
+        json_object_put(root); 
+        return -1; 
+    }
     fputs(s, f);
     fclose(f);
     json_object_put(root);
+    LOG("State saved successfully");
     return 0;
 }

@@ -544,6 +544,13 @@ static char *build_payload(const openuf_state_t *st,
     json_object_object_add(root, "num_sta",  json_object_new_int(0));
 
     const char *s = json_object_to_json_string(root);
+    
+    LOG("Payload state=%d, default=%s, adopted=%d, authkey=%.8s...", 
+        st->adopted ? 4 : 1, 
+        !st->adopted ? "true" : "false",
+        st->adopted,
+        st->authkey[0] ? st->authkey : "DEFAULT");
+    
     char *copy = strdup(s);
     json_object_put(root);
     return copy;
@@ -656,18 +663,54 @@ static void handle_response(openuf_state_t *st,
 
     /* ── setparam ────────────────────────────────────────────────── */
     if (!strcmp(type, "setparam")) {
+        /* Primero, intentar parsear mgmt_cfg (controller moderna con parámetros) */
+        if (json_object_object_get_ex(resp, "mgmt_cfg", &v)) {
+            const char *mgmt_cfg = json_object_get_string(v);
+            LOG("Parsing mgmt_cfg: %s", mgmt_cfg);
+            
+            /* Parsear pares clave=valor separados por newline */
+            char cfg_copy[2048];
+            strncpy(cfg_copy, mgmt_cfg, sizeof(cfg_copy)-1);
+            
+            char *line = strtok(cfg_copy, "\n");
+            while (line) {
+                char *eq = strchr(line, '=');
+                if (eq) {
+                    *eq = '\0';
+                    const char *key = line;
+                    const char *val = eq + 1;
+                    
+                    LOG("mgmt_cfg param: %s = %s", key, val);
+                    
+                    if (!strcmp(key, "authkey")) {
+                        LOG("Updating authkey from mgmt_cfg");
+                        strncpy(st->authkey, val, sizeof(st->authkey)-1);
+                    } else if (!strcmp(key, "cfgversion")) {
+                        strncpy(st->cfgversion, val, sizeof(st->cfgversion)-1);
+                    } else if (!strcmp(key, "mgmt_url")) {
+                        /* Guardar mgmt_url para futuro uso */
+                    }
+                }
+                line = strtok(NULL, "\n");
+            }
+        }
+        
+        /* Alternativa: parsear key/value directo (controller antigua) */
         if (json_object_object_get_ex(resp, "key", &v)) {
             const char *key = json_object_get_string(v);
             struct json_object *val_o;
             if (json_object_object_get_ex(resp, "value", &val_o)) {
                 const char *val = json_object_get_string(val_o);
+                LOG("setparam key=%s val=%s", key, val);
                 if (!strcmp(key, "inform_url"))
                     strncpy(st->inform_url, val, sizeof(st->inform_url)-1);
                 else if (!strcmp(key, "authkey"))
                     strncpy(st->authkey, val, sizeof(st->authkey)-1);
             }
         }
+        
         state_save(st);
+        LOG("State saved after setparam");
         strcpy(action_out, "setparam");
         return;
     }
@@ -739,11 +782,15 @@ int inform_send(openuf_state_t *st,
                 char *err_out)
 {
     if (!st->inform_url[0]) {
+        LOG("No inform_url set");
         strncpy(err_out, "no inform_url", 127);
         return -1;
     }
 
     const char *key_hex = (st->authkey[0]) ? st->authkey : DEFAULT_AUTH_KEY;
+    
+    LOG("Sending inform: adopted=%d, authkey=%.8s..., inform_url=%s", 
+        st->adopted, st->authkey[0] ? st->authkey : "DEFAULT", st->inform_url);
 
     /* MAC sin colones */
     char mac_hex[32] = {0};

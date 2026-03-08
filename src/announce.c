@@ -34,6 +34,14 @@
 #include "announce.h"
 #include "config.h"
 
+#ifdef ENABLE_LOGGING
+#include <stdio.h>
+extern FILE *log_fp;
+#define LOG(fmt, ...) do { if (log_fp) { fprintf(log_fp, "[%s] " fmt "\n", __func__, ##__VA_ARGS__); fflush(log_fp); } } while(0)
+#else
+#define LOG(fmt, ...) do {} while(0)
+#endif
+
 /* ─── Packet type constants ─────────────────────────────────────── */
 #define PKT_TYPE_HW_ADDR        0x01
 #define PKT_TYPE_IP_ADDR        0x02
