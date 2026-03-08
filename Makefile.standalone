@@ -2,16 +2,50 @@
 #
 # Requisitos:
 #   opkg install gcc make \
-#                libmbedtls-dev libuci-dev libjson-c-dev \
-#                lldpd              (opcional, para leer vecinos LLDP)
+#                libmbedtls-dev libuci-dev libjson-c-dev
 #
-# Uso:
-#   make -f Makefile.standalone
+# NIVELES DE LOG (controlados en compilación):
+#
+#   Producción (por defecto, nivel 3 INFO):
+#     make -f Makefile.standalone
+#
+#   Debug detallado por módulo (nivel 4 DEBUG):
+#     make -f Makefile.standalone DEBUG=1
+#
+#   Máxima verbosidad — hex dumps, lecturas /proc, etc. (nivel 5 TRACE):
+#     make -f Makefile.standalone TRACE=1
+#
+#   Nivel personalizado (0=silent … 5=trace):
+#     make -f Makefile.standalone LOG_LEVEL=2
+#
+# Instalar:
 #   make -f Makefile.standalone install
+#   make -f Makefile.standalone DEBUG=1 install
 
 CC      = gcc
 CFLAGS  = -Wall -Wextra -O2 -I/usr/include
 LDFLAGS = -lmbedtls -lmbedcrypto -luci -ljson-c
+
+# ─── Nivel de log en tiempo de compilación ───────────────────────────────
+ifdef LOG_LEVEL
+    CFLAGS += -DOPENUF_LOG_LEVEL=$(LOG_LEVEL)
+    $(info [openuf] Nivel de log personalizado: $(LOG_LEVEL))
+    ifneq ($(LOG_LEVEL),1)
+    ifneq ($(LOG_LEVEL),2)
+    ifneq ($(LOG_LEVEL),3)
+        CFLAGS += -g -O0
+    endif
+    endif
+    endif
+else ifdef TRACE
+    CFLAGS += -DOPENUF_TRACE -DOPENUF_DEBUG -g -O0
+    $(info [openuf] TRACE activado (nivel 5) — máxima verbosidad)
+else ifdef DEBUG
+    CFLAGS += -DOPENUF_DEBUG -g -O0
+    $(info [openuf] DEBUG activado (nivel 4) — logs detallados en stderr)
+else
+    $(info [openuf] Producción: nivel INFO (make DEBUG=1 o TRACE=1 para más detalle))
+endif
 
 SRCS = src/main.c \
        src/config.c \
