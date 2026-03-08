@@ -1,0 +1,45 @@
+# openuf — Makefile para compilar directamente en el dispositivo
+#
+# Requisitos:
+#   opkg install gcc make \
+#                libmbedtls-dev libuci-dev libjson-c-dev \
+#                lldpd              (opcional, para leer vecinos LLDP)
+#
+# Uso:
+#   make -f Makefile.standalone
+#   make -f Makefile.standalone install
+
+CC      = gcc
+CFLAGS  = -Wall -Wextra -O2 -I/usr/include
+LDFLAGS = -lmbedtls -lmbedcrypto -luci -ljson-c
+
+SRCS = src/main.c \
+       src/config.c \
+       src/state.c \
+       src/crypto.c \
+       src/http.c \
+       src/announce.c \
+       src/inform.c \
+       src/wlan.c \
+       src/sysinfo.c \
+       src/clients.c \
+       src/lldp.c \
+       src/models.c
+
+TARGET = openuf
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+install: $(TARGET)
+	install -m 755 $(TARGET) /usr/sbin/openuf
+	[ -f /etc/openuf/openuf.conf ] || install -D -m 644 files/openuf.conf /etc/openuf/openuf.conf
+	install -m 755 files/openuf.init /etc/init.d/openuf
+	/etc/init.d/openuf enable
+
+clean:
+	rm -f $(TARGET)
+
+.PHONY: all install clean
