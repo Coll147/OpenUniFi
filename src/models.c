@@ -21,8 +21,6 @@
  */
 
 #include "ufmodel.h"
-#define DBG_TAG "models"
-#include "debug.h"
 #include <string.h>
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -180,25 +178,22 @@ static const uf_model_t *all_models[] = {
 
 const uf_model_t *ufmodel_find(const char *name)
 {
-    if (!name) { LOG_DBG("ufmodel_find(NULL) -> u6inwall por defecto"); return &model_u6inwall; }
-    LOG_DBG("buscando modelo '%s'", name);
+    if (!name) return &model_u6inwall;
     for (int i = 0; all_models[i]; i++) {
         const uf_model_t *m = all_models[i];
         if (!strcasecmp(name, m->model)        ||
             !strcasecmp(name, m->model_display) ||
             !strcasecmp(name, m->display_name)  ||
-            !strcasecmp(name, m->platform)) {
-            LOG_DBG("encontrado '%s' -> %s (%s)", name, m->model, m->display_name);
+            !strcasecmp(name, m->platform))
             return m;
-        }
     }
-    /* Aliases */
-    if (!strcasecmp(name,"u6-inwall")||!strcasecmp(name,"u6iw"))  { LOG_DBG("alias u6iw");        return &model_u6inwall; }
-    if (!strcasecmp(name,"u6-lite"))                               { LOG_DBG("alias u6-lite");     return &model_u6lite;   }
-    if (!strcasecmp(name,"uapg1"))                                 { LOG_DBG("alias uapg1");       return &model_uapg1;    }
-    if (!strcasecmp(name,"uapg1-lr"))                              { LOG_DBG("alias uapg1-lr");    return &model_uapg1lr;  }
-    if (!strcasecmp(name,"uapg2-ac-lr"))                           { LOG_DBG("alias uapg2-ac-lr"); return &model_uapg2aclr;}
+    /* Aliases de configuración */
+    if (!strcasecmp(name, "u6-inwall") ||
+        !strcasecmp(name, "u6iw"))     return &model_u6inwall;
+    if (!strcasecmp(name, "u6-lite"))  return &model_u6lite;
+    if (!strcasecmp(name, "uapg1"))    return &model_uapg1;
+    if (!strcasecmp(name, "uapg1-lr")) return &model_uapg1lr;
+    if (!strcasecmp(name, "uapg2-ac-lr")) return &model_uapg2aclr;
 
-    LOG_DBG("modelo '%s' no encontrado -- usando u6inwall por defecto", name);
-    return &model_u6inwall;
+    return &model_u6inwall;  /* default */
 }
