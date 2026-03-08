@@ -683,15 +683,16 @@ static void handle_response(openuf_state_t *st,
                     
                     LOG("mgmt_cfg param: %s = %s", key, val);
                     
-                    /* IMPORTANT: Only update cfgversion, NOT authkey!
-                       authkey in mgmt_cfg is for management, not adoption.
-                       Only accept real authkey during set-adopt command. */
-                    if (!strcmp(key, "cfgversion")) {
+                    /* For adoption: extract authkey from setparam when not adopted */
+                    if (!strcmp(key, "authkey") && st->adopted == 0) {
+                        strncpy(st->authkey, val, sizeof(st->authkey)-1);
+                        LOG("Updated authkey from setparam for adoption");
+                    } else if (!strcmp(key, "cfgversion")) {
                         strncpy(st->cfgversion, val, sizeof(st->cfgversion)-1);
                     } else if (!strcmp(key, "mgmt_url")) {
                         /* Could save mgmt_url for future use */
                     }
-                    /* Ignore authkey, use_aes_gcm, report_crash, etc. from mgmt_cfg */
+                    /* Ignore use_aes_gcm, report_crash, etc. from mgmt_cfg */
                 }
                 line = strtok(NULL, "\n");
             }
