@@ -646,6 +646,8 @@ static void handle_response(openuf_state_t *st,
     if (json_object_object_get_ex(resp, "_type", &v))
         type = json_object_get_string(v);
 
+    LOG("Handling response type: %s", type);
+
     /* ── noop ────────────────────────────────────────────────────── */
     if (!strcmp(type, "noop")) {
         strcpy(action_out, "noop");
@@ -686,7 +688,7 @@ static void handle_response(openuf_state_t *st,
             st->adopted = true;
             state_save(st);
             strcpy(action_out, "adopted");
-            printf("[openuf] ✓ Adoptado. Clave: %.8s...\n", st->authkey);
+            LOG("Adopted successfully. Key: %.8s...", st->authkey);
 
         } else if (!strcmp(cmd, "reboot")) {
             strcpy(action_out, "reboot");
@@ -754,10 +756,14 @@ int inform_send(openuf_state_t *st,
     char *payload = build_payload(st, model, uptime);
     if (!payload) { strncpy(err_out, "build_payload OOM", 127); return -1; }
 
+    LOG("Built payload, length: %zu", strlen(payload));
+
     size_t pkt_len = 0;
     unsigned char *pkt = build_packet(mac_hex, key_hex, payload, &pkt_len);
     free(payload);
     if (!pkt) { strncpy(err_out, "build_packet failed", 127); return -1; }
+
+    LOG("Built packet, length: %zu", pkt_len);
 
     unsigned char *resp_body = NULL;
     size_t resp_len = 0;
@@ -766,6 +772,8 @@ int inform_send(openuf_state_t *st,
                            pkt, pkt_len,
                            &resp_body, &resp_len);
     free(pkt);
+
+    LOG("HTTP POST to %s, status: %d, response length: %zu", st->inform_url, status, resp_len);
 
     if (status < 0) {
         snprintf(err_out, 127, "HTTP connect failed");
@@ -777,19 +785,35 @@ int inform_send(openuf_state_t *st,
         return -1;
     }
 
-    if (!resp_body || resp_len == 0) { free(resp_body); return 0; }
+    if (!resp_body || resp_len == 0) { 
+        LOG("No response body");
+        free(resp_body); 
+        return 0; 
+    }
 
     char *resp_json = parse_packet(resp_body, resp_len, key_hex);
     free(resp_body);
-    if (!resp_json) { snprintf(err_out, 127, "parse_packet failed"); return -1; }
+    if (!resp_json) { 
+        LOG("Failed to parse response packet");
+        snprintf(err_out, 127, "parse_packet failed"); 
+        return -1; 
+    }
+
+    LOG("Parsed response JSON: %s", resp_json);
 
     struct json_object *resp_obj = json_tokener_parse(resp_json);
     free(resp_json);
-    if (!resp_obj) { snprintf(err_out, 127, "JSON parse failed"); return -1; }
+    if (!resp_obj) { 
+        LOG("Failed to parse JSON");
+        snprintf(err_out, 127, "JSON parse failed"); 
+        return -1; 
+    }
 
     char action[64] = "noop";
     handle_response(st, model, resp_obj, action);
     json_object_put(resp_obj);
+
+    LOG("Response action: %s", action);
 
     if (strcmp(action, "noop") != 0)
         printf("[openuf] acción: %s\n", action);
