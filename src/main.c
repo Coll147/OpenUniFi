@@ -99,6 +99,10 @@ int main(int argc, char *argv[])
     if (!state.hostname[0])
         strncpy(state.hostname, model->display_name, sizeof(state.hostname)-1);
 
+    /* Log initial state */
+    LOG("Initial device state: adopted=%d, authkey=%.8s...", state.adopted, 
+        state.authkey[0] ? state.authkey : "DEFAULT");
+
     if (!state.adopted || !state.inform_url[0])
         snprintf(state.inform_url, sizeof(state.inform_url),
                  "http://%s:%d%s", cfg.controller_ip, INFORM_PORT, INFORM_PATH);

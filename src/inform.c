@@ -545,7 +545,8 @@ static char *build_payload(const openuf_state_t *st,
 
     const char *s = json_object_to_json_string(root);
     
-    LOG("Payload state=%d, default=%s, adopted=%d, authkey=%.8s...", 
+    /* Log shows what authkey is actually in the payload */
+    LOG("Payload state=%d, default=%s, adopted=%d, x_authkey=%.8s...", 
         st->adopted ? 4 : 1, 
         !st->adopted ? "true" : "false",
         st->adopted,
@@ -682,14 +683,15 @@ static void handle_response(openuf_state_t *st,
                     
                     LOG("mgmt_cfg param: %s = %s", key, val);
                     
-                    if (!strcmp(key, "authkey")) {
-                        LOG("Updating authkey from mgmt_cfg");
-                        strncpy(st->authkey, val, sizeof(st->authkey)-1);
-                    } else if (!strcmp(key, "cfgversion")) {
+                    /* IMPORTANT: Only update cfgversion, NOT authkey!
+                       authkey in mgmt_cfg is for management, not adoption.
+                       Only accept real authkey during set-adopt command. */
+                    if (!strcmp(key, "cfgversion")) {
                         strncpy(st->cfgversion, val, sizeof(st->cfgversion)-1);
                     } else if (!strcmp(key, "mgmt_url")) {
-                        /* Guardar mgmt_url para futuro uso */
+                        /* Could save mgmt_url for future use */
                     }
+                    /* Ignore authkey, use_aes_gcm, report_crash, etc. from mgmt_cfg */
                 }
                 line = strtok(NULL, "\n");
             }
@@ -704,8 +706,7 @@ static void handle_response(openuf_state_t *st,
                 LOG("setparam key=%s val=%s", key, val);
                 if (!strcmp(key, "inform_url"))
                     strncpy(st->inform_url, val, sizeof(st->inform_url)-1);
-                else if (!strcmp(key, "authkey"))
-                    strncpy(st->authkey, val, sizeof(st->authkey)-1);
+                /* Do NOT accept authkey via setparam - only via set-adopt */
             }
         }
         
@@ -789,8 +790,14 @@ int inform_send(openuf_state_t *st,
 
     const char *key_hex = (st->authkey[0]) ? st->authkey : DEFAULT_AUTH_KEY;
     
+    /* CRITICAL: When not adopted, ALWAYS use DEFAULT_AUTH_KEY */
+    if (!st->adopted && st->authkey[0] && strcmp(st->authkey, DEFAULT_AUTH_KEY) != 0) {
+        LOG("WARNING: Device not adopted but has custom authkey! Using DEFAULT instead!");
+        key_hex = DEFAULT_AUTH_KEY;
+    }
+    
     LOG("Sending inform: adopted=%d, authkey=%.8s..., inform_url=%s", 
-        st->adopted, st->authkey[0] ? st->authkey : "DEFAULT", st->inform_url);
+        st->adopted, key_hex, st->inform_url);
 
     /* MAC sin colones */
     char mac_hex[32] = {0};

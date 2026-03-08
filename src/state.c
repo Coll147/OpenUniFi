@@ -66,6 +66,12 @@ void state_load(openuf_state_t *st)
     LOAD_STR (ip,         "ip");
     LOAD_STR (hostname,   "hostname");
 
+    /* CRITICAL: If not adopted, force DEFAULT_AUTH_KEY */
+    if (!st->adopted) {
+        LOG("Device not adopted - resetting authkey to DEFAULT");
+        strncpy(st->authkey, DEFAULT_AUTH_KEY, sizeof(st->authkey) - 1);
+    }
+
     LOG("State loaded: adopted=%d, authkey=%.8s..., inform_url=%s", 
         st->adopted, st->authkey[0] ? st->authkey : "DEFAULT", st->inform_url);
 
